@@ -146,7 +146,7 @@ def llama_eval(model, testenc, dev):
     return ppl.item()
 
 @torch.no_grad()
-def llama_calibration(model, dataloader, dev, perchannel_match, pertensor_match, bits, include_sparse=False, sparsity_threshold=0.999, nuq=False, fisher=None, norm=False, cap_outliers=False, first_few_fp16=False):
+def llama_calibration(model, dataloader, dev, perchannel_match, pertensor_match, num_coupled, bits, include_sparse=False, sparsity_threshold=0.999, nuq=False, fisher=None, norm=False, cap_outliers=False, first_few_fp16=False):
     print('Starting ...')
 
     use_cache = model.config.use_cache
@@ -221,16 +221,14 @@ def llama_calibration(model, dataloader, dev, perchannel_match, pertensor_match,
             if name in perchannel_list:
                 simquant[name] = SimQuant(
                                         subset[name],
+                                        num_coupled,
                                         bits,
-                                        perchannel=True,
-                                        qchannel=0
                                      )
             elif name in pertensor_list:
                 simquant[name] = SimQuant(
                                         subset[name],
+                                        num_coupled,
                                         bits,
-                                        perchannel=True,
-                                        qchannel=-1
                                      )
             else:
                 continue
@@ -319,7 +317,11 @@ if __name__ == '__main__':
         help='Whether to run calibration to quantize the KV cache.'
     )
     parser.add_argument(
-        '--abits', type=int, default=16, choices=[2, 3, 4, 5, 16],
+        '--num_coupled', type=int, default=4, choices=[2, 4, 8],
+        help='#bits to use for quantization; use 16 for evaluating base model.'
+    )
+    parser.add_argument(
+        '--abits', type=int, default=8, choices=[4,8,9],
         help='#bits to use for quantization; use 16 for evaluating base model.'
     )
     parser.add_argument(
@@ -456,6 +458,7 @@ if __name__ == '__main__':
             DEV,
             args.perchannel,
             args.pertoken,
+            args.num_coupled,
             args.abits,
             include_sparse=args.include_sparse,
             sparsity_threshold=args.sparsity_threshold,

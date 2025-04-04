@@ -369,26 +369,19 @@ class SimQuant:
     def __init__(
                     self,
                     layer,
-                    bits,
-                    perchannel=True,
-                    qchannel=0,
-                    include_rope=False
+                    num_coupled,
+                    bits
                 ):
         self.layer = layer
         self.dev = self.layer.weight.device
         W = layer.weight.data.clone()
-        self.perchannel = perchannel
-        self.qchannel = qchannel
-        self.bits = bits
-
         self.rows = W.shape[0]
         self.columns = W.shape[1]
+        self.out = None
         self.nsamples = 0
 
-        self.out = None
-
-        self.c = 4
-        self.b = 8
+        self.c = num_coupled
+        self.b = bits
 
     def add_batch(self, inp, out):
         if len(out.shape) == 2:
@@ -432,7 +425,8 @@ class SimQuant:
         for i in tqdm.tqdm(range(data.shape[0] // mini_batch)):
             centroid, labels = weighted_kmeans_batch(data[i*mini_batch:(i+1)*mini_batch], weights=weight[i*mini_batch:(i+1)*mini_batch].to(data.device), k=(1 << self.b), num_iters=100)
             centroids.append(centroid)
-        centroids = torch.stack(centroids, dim=0).cpu()
+        centroids = torch.cat(centroids, dim=0).cpu()
+        print(centroids.shape)
         return centroids
 
     def free(self):
