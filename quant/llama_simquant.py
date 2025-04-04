@@ -38,7 +38,7 @@ def get_model(model, seqlen, maxseqlen):
         config.rope_scaling = {"type": "linear", "factor": scaling_factor}
 
     from transformers import AutoModelForCausalLM
-    model = AutoModelForCausalLM.from_pretrained(model, config=config, trust_remote_code=True, use_flash_attention_2=True, torch_dtype=torch.half)
+    model = AutoModelForCausalLM.from_pretrained(model, config=config, trust_remote_code=True, torch_dtype=torch.half)
 
     model.seqlen = seqlen  #TODO
     if config.vocab_size == 32001:
