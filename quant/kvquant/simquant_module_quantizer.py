@@ -7,7 +7,6 @@ from sklearn.cluster import KMeans
 import torch
 import tqdm
 from torch.distributions import Normal
-from torch_kmeans import ConstrainedKMeans
 from .gpu_kmeans import weighted_kmeans_batch
 
 
@@ -410,7 +409,6 @@ class SimQuant:
         torch.cuda.empty_cache()
         data = self.out.float()
         data = data.reshape(-1, data.shape[-1] // self.c, self.c)
-        model = ConstrainedKMeans()
         fisher = fisher.reshape(-1, fisher.shape[-1] // self.c, self.c)
         data = data.transpose(0, 1).contiguous()
         fisher = fisher.transpose(0, 1).contiguous()
