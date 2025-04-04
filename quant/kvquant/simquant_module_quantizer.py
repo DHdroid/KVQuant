@@ -5,7 +5,11 @@ import math
 from sklearn.cluster import KMeans
 
 import torch
+import tqdm
 from torch.distributions import Normal
+from torch_kmeans import ConstrainedKMeans
+from .gpu_kmeans import weighted_kmeans_batch
+
 
 def round_to_nearest_pole_sim(w, poles):
     """
@@ -383,6 +387,9 @@ class SimQuant:
 
         self.out = None
 
+        self.c = 4
+        self.b = 8
+
     def add_batch(self, inp, out):
         if len(out.shape) == 2:
             out = out.unsqueeze(0)
@@ -407,152 +414,26 @@ class SimQuant:
         cap_outliers=False,
         first_few_fp16=-1
     ):
+        torch.cuda.empty_cache()
+        data = self.out.float()
+        data = data.reshape(-1, data.shape[-1] // self.c, self.c)
+        model = ConstrainedKMeans()
+        fisher = fisher.reshape(-1, fisher.shape[-1] // self.c, self.c)
+        data = data.transpose(0, 1).contiguous()
+        fisher = fisher.transpose(0, 1).contiguous()
+        # print(data.shape, fisher.shape)
+        # print(((-weight.reshape(-1))).topk(10))
+        weight = fisher.sum(dim=-1)
+        weight /= weight.sum()
+        weight = torch.clamp(weight, 1e-5, 1.0)
 
-        # for now, just update threshold here
-        if include_sparse:
-            t = 1-((1-sparsity_threshold)/2)
-        else:
-            t = 1 #use min-max quantization
-
-        #TODO - if not using sparsity, use a different threshold for min-max quant?
-        data = self.out.float().cpu().numpy()
-
-
-        if self.perchannel and cap_outliers:
-            #per-channel - remove tokenwise outliers and normalize range to [-1,1]
-            data = torch.tensor(data)
-
-            outlier_threshold_upper = torch.tensor(np.percentile(data, t*100, axis=self.qchannel)).unsqueeze(self.qchannel)
-            outlier_threshold_lower = torch.tensor(np.percentile(data, (1-t)*100, axis=self.qchannel)).unsqueeze(self.qchannel)
-            zero_point = (outlier_threshold_upper + outlier_threshold_lower) / 2
-            distance = (outlier_threshold_upper - outlier_threshold_lower) / 2
-            data2 = ((data - zero_point) / distance).abs()
-
-            outlier_mask = torch.zeros_like(data2, dtype=torch.bool)
-            hidden_dim = data.shape[-1]
-            num_elems = math.ceil((1-t) * hidden_dim)
-            upper_indices = torch.topk(data2, num_elems).indices
-            lower_indices = torch.topk(data2, num_elems, largest=False).indices
-
-            true_mask = torch.ones_like(upper_indices, dtype=torch.bool)
-            outlier_mask.scatter_(-1, lower_indices, true_mask)
-            outlier_mask.scatter_(-1, upper_indices, true_mask)
-
-            if first_few_fp16 > -1 :
-                # remove first few tokens
-                for i in range(0,self.nsamples):
-                    start = i*2048
-                    end = i*2048 + first_few_fp16
-                    outlier_mask[start:end,:] = True
-
-            med = torch.median(data, dim=0).values.unsqueeze(0).repeat(32768,1)
-            data_trimmed = data.clone()
-            data_trimmed[outlier_mask] = med[outlier_mask] 
-
-            outlier_threshold_upper = torch.max(data_trimmed, axis=self.qchannel).values
-            outlier_threshold_lower = torch.min(data_trimmed, axis=self.qchannel).values
-
-            # recomputing outlier mask here before doing k-means fitting
-            zero_point = (outlier_threshold_upper + outlier_threshold_lower) / 2
-            distance = (outlier_threshold_upper - outlier_threshold_lower) / 2
-            zero_point = zero_point.unsqueeze(0)
-            distance = distance.unsqueeze(0)
-            data_shifted_normalized = ((data - zero_point) / distance).abs()
-            outlier_mask = torch.logical_or((data_shifted_normalized > 1), (data_shifted_normalized < -1))
-
-        if self.perchannel:
-            #per-channel - remove tokenwise outliers and normalize range to [-1,1]
-            outlier_threshold_upper = np.percentile(data, t*100, axis=self.qchannel)
-            outlier_threshold_lower = np.percentile(data, (1-t)*100, axis=self.qchannel)
-        else:
-            #per-token - remove tokenwise outliers and normalize range to [-1,1]
-            assert(False) # not currently supported
-
-        # convert to torch
-        data = torch.tensor(data)
-        outlier_threshold_upper = torch.tensor(outlier_threshold_upper).unsqueeze(self.qchannel)
-        outlier_threshold_lower = torch.tensor(outlier_threshold_lower).unsqueeze(self.qchannel)
-
-        # range and offset
-        rangeval = (outlier_threshold_upper - outlier_threshold_lower) / 2
-        zeropoint = (outlier_threshold_upper + outlier_threshold_lower) / 2
-
-        # shift by offset
-        data_shifted = data - zeropoint
-
-        # normalize by rangeval into [-1,1]
-        data_shifted_normalized = data_shifted / rangeval
-
-        #get outliers (need to mask out for kmeans)
-        if not cap_outliers:
-            outlier_mask = torch.logical_or((data_shifted_normalized > 1), (data_shifted_normalized < -1))
-
-        # remove first few tokens
-        if first_few_fp16 > -1:
-            for i in range(0,self.nsamples):
-                start = i*2048
-                end = i*2048 + first_few_fp16
-                outlier_mask[start:end,:] = True
-
-        if nuq:
-            centroids = []
-            act_distn_np = data_shifted_normalized.flatten()
-            n_cluster = 2 ** self.bits
-
-            outlier_mask_unflattened = outlier_mask
-            outlier_mask = outlier_mask.flatten()
-            act_distn_np_without_outliers = act_distn_np[~outlier_mask]
-            act_distn_np_without_outliers = act_distn_np_without_outliers.float().cpu().numpy().reshape(-1, 1)
-
-            # load fisher info
-            if fisher is not None:
-                fisher_info = fisher.flatten()
-                fisher_info_tmp_without_outliers = fisher_info[~outlier_mask]
-                kmeans = KMeans(
-                    n_clusters=n_cluster,
-                    random_state=0,
-                    n_init="auto",
-                    max_iter=50,
-                ).fit(
-                    act_distn_np_without_outliers,
-                    sample_weight=fisher_info_tmp_without_outliers,
-                )
-            else:
-                kmeans = KMeans(
-                    n_clusters=n_cluster,
-                    random_state=0,
-                    n_init="auto",
-                    max_iter=50,
-                ).fit(
-                    act_distn_np_without_outliers
-                )
-
-            centroids.append(kmeans.cluster_centers_)
-
-            #Q-Norm
-            if norm:
-                centroid = torch.tensor(centroids[0])
-                aug = torch.tensor(data_shifted_normalized)
-                not_outlier_mask_unflattened = ~outlier_mask_unflattened
-
-                m1 = (aug*not_outlier_mask_unflattened).sum()/not_outlier_mask_unflattened.sum()
-                not_outlier_mask_unqueeze = not_outlier_mask_unflattened.sum()
-                stdev1 = torch.sqrt(torch.sum(((aug - m1)*not_outlier_mask_unflattened)**2) / not_outlier_mask_unqueeze)
-
-                aug, freq = round_to_nearest_pole_sim(aug, centroid, return_freq=True)
-
-                m2 = (aug*not_outlier_mask_unflattened).sum()/not_outlier_mask_unflattened.sum()
-                stdev2 = torch.sqrt(torch.sum(((aug - m2)*not_outlier_mask_unflattened)**2) / not_outlier_mask_unqueeze)
-
-                normscale = (stdev1 / stdev2)
-                normoffset = (- m2) * (stdev1 / stdev2) + m1
-
-                return outlier_threshold_upper, outlier_threshold_lower, centroids, normscale, normoffset
-            else:
-                return outlier_threshold_upper, outlier_threshold_lower, centroids
-        else:
-            # not using NUQ
-            return outlier_threshold_upper, outlier_threshold_lower
+        centroids = []
+        mini_batch = 256
+        for i in tqdm.tqdm(range(data.shape[0] // mini_batch)):
+            centroid, labels = weighted_kmeans_batch(data[i*mini_batch:(i+1)*mini_batch], weights=weight[i*mini_batch:(i+1)*mini_batch].to(data.device), k=(1 << self.b), num_iters=100)
+            centroids.append(centroid)
+        centroids = torch.stack(centroids, dim=0).cpu()
+        return centroids
 
     def free(self):
         self.out = None
