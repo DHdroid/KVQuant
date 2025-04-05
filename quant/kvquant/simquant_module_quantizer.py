@@ -409,12 +409,11 @@ class SimQuant:
         torch.cuda.empty_cache()
         data = self.out.float()
         data = data.reshape(-1, data.shape[-1] // self.c, self.c)
-        fisher = fisher.reshape(-1, fisher.shape[-1] // self.c, self.c)
+        fisher = fisher.reshape(-1, fisher.shape[-1] // self.c, self.c) # (1, 16384, 4096) -> (16384, 1024, 4)
         data = data.transpose(0, 1).contiguous()
-        fisher = fisher.transpose(0, 1).contiguous()
-        # print(data.shape, fisher.shape)
-        # print(((-weight.reshape(-1))).topk(10))
+        fisher = fisher.transpose(0, 1).contiguous() # (1024, 16384, 4)
         weight = fisher.sum(dim=-1)
+        weight /= weight.max()
 
         centroids = []
         mini_batch = 256
