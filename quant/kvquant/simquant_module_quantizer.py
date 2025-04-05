@@ -415,8 +415,6 @@ class SimQuant:
         # print(data.shape, fisher.shape)
         # print(((-weight.reshape(-1))).topk(10))
         weight = fisher.sum(dim=-1)
-        weight /= weight.sum()
-        weight = torch.clamp(weight, 1e-5, 1.0)
 
         centroids = []
         mini_batch = 256

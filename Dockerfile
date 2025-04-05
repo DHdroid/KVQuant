@@ -3,6 +3,7 @@ FROM pytorch/pytorch:2.6.0-cuda11.8-cudnn9-devel
 # Install dependencies
 RUN apt-get update && apt-get install -y wget git curl bash vim tmux
 RUN conda init
+RUN wget -qO- cli.runpod.net | bash
 
 ENV PATH="/opt/conda/bin:$PATH"
 ENV CUDA_HOME=/usr/local/cuda
