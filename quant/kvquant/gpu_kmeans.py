@@ -1,53 +1,93 @@
 import torch
 import torch.nn.functional as F
+import kmeans_tools
+
+def get_dist_argmin_half_batched(D):
+    if D == 4:
+        return kmeans_tools.dist_argmin_half_batched_d4
+    elif D == 8:
+        return kmeans_tools.dist_argmin_half_batched_d8
+    elif D == 9:
+        return kmeans_tools.dist_argmin_half_batched_d9
+    elif D == 10:
+        return kmeans_tools.dist_argmin_half_batched_d10
+    else:
+        raise ValueError(f"Unsupported dimension: {D}")
+
 def kmeans_plusplus_batch(X, k):
+    """
+    Batch kmeans++ initialization with incremental distance updates.
+    X: Tensor of shape (B, N, D)
+    Returns: centroids of shape (B, k, D)
+    """
     B, N, D = X.shape
     device = X.device
 
-    centroids = torch.zeros((B, k, D), device=device)
+    centroids = torch.empty((B, k, D), device=device)
 
-    # 첫 번째 중심: 무작위 선택
-    idx = torch.randint(0, N, (B,), device=device)
-    centroids[:, 0] = X[torch.arange(B), idx]
+    # First centroid: randomly chosen for each batch.
+    random_idx = torch.randint(0, N, (B,), device=device)
+    centroids[:, 0] = X[torch.arange(B, device=device), random_idx]
+
+    # Compute initial distances from the first centroid.
+    min_dists = torch.cdist(X, centroids[:, 0:1]).squeeze(2)  # (B, N)
 
     for i in range(1, k):
-        # 이전까지의 centroid들과 거리 계산
-        prev = centroids[:, :i]                      # (B, i, D)
-        dist = torch.cdist(X, prev)                  # (B, N, i)
-        min_dist, _ = dist.min(dim=2)                # (B, N)
-        probs = min_dist ** 2
-        probs = probs / probs.sum(dim=1, keepdim=True)
-
-        # 확률적으로 다음 centroid 선택
-        next_idx = torch.multinomial(probs, num_samples=1).squeeze(1)  # (B,)
-        centroids[:, i] = X[torch.arange(B), next_idx]
-
-    return centroids  # (B, k, D)
+        # Compute probability distribution proportional to the squared distance.
+        probs = min_dists ** 2
+        sum_probs = probs.sum(dim=1, keepdim=True)
+        probs = probs / (sum_probs + 1e-8)
+        
+        # Sample the next centroid index for each batch.
+        new_idx = torch.multinomial(probs, num_samples=1).squeeze(1)
+        centroids[:, i] = X[torch.arange(B, device=device), new_idx]
+        
+        # Update the minimum distances using the new centroid.
+        new_dists = torch.cdist(X, centroids[:, i:i+1]).squeeze(2)
+        min_dists = torch.minimum(min_dists, new_dists)
+        
+    return centroids
 
 
 def weighted_kmeans_batch(X, weights, k, num_iters=10):
+    """
+    Batched weighted k-means clustering.
+    X: Tensor of shape (B, N, D)
+    weights: Tensor of shape (B, N)
+    k: number of clusters
+    num_iters: maximum iterations
+    Returns: centroids of shape (B, k, D) and labels of shape (B, N)
+    """
     B, N, D = X.shape
     device = X.device
 
-    # KMeans++ 초기화
-    centroids = kmeans_plusplus_batch(X, k)  # (B, k, D)
+    # KMeans++ initialization
+    centroids = kmeans_plusplus_batch(X, k)
+
+    # Select the appropriate half-batched distance function.
+    dist_argmin_half_batched = get_dist_argmin_half_batched(D)
 
     for it in range(num_iters):
-        # 거리 계산: (B, N, k)
-        dists = torch.cdist(X, centroids)  # (B, N, k)
-        labels = dists.argmin(dim=2)       # (B, N)
+        # Cluster assignment step using the custom distance kernel.
+        # dist = torch.cdist(X, centroids)
+        # labels = dist.argmin(dim=2)
+        labels = dist_argmin_half_batched(X, centroids)  # (B, N)
+        # Compute weighted sums and counts for centroids using scatter_add.
+        weighted_sum = torch.zeros(B, k, D, device=device)
+        weighted_count = torch.zeros(B, k, device=device)
         
-        onehot_labels = F.one_hot(labels, num_classes=k).float() # (B, N, k)
-        onehot_labels *= weights.unsqueeze(-1) # (B, N, k)
-        denominator = onehot_labels.sum(dim=1, keepdim=True) + 1e-8 # (B, 1, k)
-        normalized_onehot_labels = onehot_labels / denominator # (B, N, k)
-        centroids_new = normalized_onehot_labels.transpose(1, 2) @ X # (B, k, D)
+        # Scatter the weighted sums: expand labels to (B, N, 1) to match X’s dimensions.
+        weighted_sum.scatter_add_(1, labels.unsqueeze(-1).expand(B, N, D).long(), weights.unsqueeze(-1) * X)
+        weighted_count.scatter_add_(1, labels.long(), weights)
+        
+        # Update centroids: compute the weighted average.
+        centroids_new = weighted_sum / (weighted_count.unsqueeze(-1) + 1e-8)
 
-        if (centroids_new - centroids).abs().mean() < 1e-5:
-            print(f"{it}/{num_iters}")
+        # Convergence check: if the mean absolute change is small enough, break early.
+        if torch.abs(centroids_new - centroids).mean() < 1e-5:
+            print(f"Converged at iteration {it}/{num_iters}")
             return centroids_new, labels
 
         centroids = centroids_new
 
-    return centroids, labels  # (B, k, D), (B, N)
- 
+    return centroids, labels
