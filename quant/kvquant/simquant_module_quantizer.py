@@ -418,10 +418,9 @@ class SimQuant:
         centroids = []
         mini_batch = 32
         for i in tqdm.tqdm(range(data.shape[0] // mini_batch)):
-            centroid, labels = weighted_kmeans_batch(data[i*mini_batch:(i+1)*mini_batch], weights=weight[i*mini_batch:(i+1)*mini_batch].to(data.device), k=(1 << self.b), num_iters=100)
+            centroid, labels = weighted_kmeans_batch(data[i*mini_batch:(i+1)*mini_batch].contiguous(), weights=weight[i*mini_batch:(i+1)*mini_batch].to(data.device), k=(1 << self.b), num_iters=100)
             centroids.append(centroid)
         centroids = torch.cat(centroids, dim=0).cpu()
-        print(centroids.shape)
         return centroids
 
     def free(self):

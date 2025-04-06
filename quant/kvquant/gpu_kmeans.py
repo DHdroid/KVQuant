@@ -14,6 +14,7 @@ def get_dist_argmin_half_batched(D):
     else:
         raise ValueError(f"Unsupported dimension: {D}")
 
+
 def kmeans_plusplus_batch(X, k):
     """
     Batch kmeans++ initialization with incremental distance updates.
@@ -69,9 +70,7 @@ def weighted_kmeans_batch(X, weights, k, num_iters=10):
 
     for it in range(num_iters):
         # Cluster assignment step using the custom distance kernel.
-        # dist = torch.cdist(X, centroids)
-        # labels = dist.argmin(dim=2)
-        labels = dist_argmin_half_batched(X, centroids)  # (B, N)
+        labels = dist_argmin_half_batched(X.half(), centroids.half())  # (B, N)
         # Compute weighted sums and counts for centroids using scatter_add.
         weighted_sum = torch.zeros(B, k, D, device=device)
         weighted_count = torch.zeros(B, k, device=device)
@@ -82,6 +81,17 @@ def weighted_kmeans_batch(X, weights, k, num_iters=10):
         
         # Update centroids: compute the weighted average.
         centroids_new = weighted_sum / (weighted_count.unsqueeze(-1) + 1e-8)
+
+        zero_mask = (centroids_new == 0).all(dim=-1)  # shape: (B, k)
+        rand_indices = torch.randint(0, N, size=(B, k), device=X.device)  # shape: (B, k)
+        reinit_vectors = torch.gather(
+            X, 1, rand_indices.unsqueeze(-1).expand(-1, -1, D)
+        )  # shape: (B, k, D)
+        centroids_new = torch.where(
+            zero_mask.unsqueeze(-1),  # shape: (B, k, 1)
+            reinit_vectors,
+            centroids_new
+        )
 
         # Convergence check: if the mean absolute change is small enough, break early.
         if torch.abs(centroids_new - centroids).mean() < 1e-5:
