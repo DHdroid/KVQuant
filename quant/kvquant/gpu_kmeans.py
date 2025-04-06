@@ -1,5 +1,5 @@
 import torch
-
+import torch.nn.functional as F
 def kmeans_plusplus_batch(X, k):
     B, N, D = X.shape
     device = X.device
@@ -36,19 +36,12 @@ def weighted_kmeans_batch(X, weights, k, num_iters=10):
         # 거리 계산: (B, N, k)
         dists = torch.cdist(X, centroids)  # (B, N, k)
         labels = dists.argmin(dim=2)       # (B, N)
-
-        centroids_new = torch.zeros_like(centroids)
-
-        for i in range(k):
-            mask = labels == i  # (B, N)
-            w_mask = mask * weights  # (B, N)
-            w_mask_unsq = w_mask.unsqueeze(2)  # (B, N, 1)
-
-            numerator = (X * w_mask_unsq).sum(dim=1)  # (B, D)
-            denominator = w_mask.sum(dim=1, keepdim=True) + 1e-8  # (B, 1)
-
-            centroid_i = numerator / denominator  # (B, D)
-            centroids_new[:, i] = centroid_i
+        
+        onehot_labels = F.one_hot(labels, num_classes=k).float() # (B, N, k)
+        onehot_labels *= weights.unsqueeze(-1) # (B, N, k)
+        denominator = onehot_labels.sum(dim=1, keepdim=True) + 1e-8 # (B, 1, k)
+        normalized_onehot_labels = onehot_labels / denominator # (B, N, k)
+        centroids_new = normalized_onehot_labels.transpose(1, 2) @ X # (B, k, D)
 
         if (centroids_new - centroids).abs().mean() < 1e-5:
             print(f"{it}/{num_iters}")
@@ -57,3 +50,4 @@ def weighted_kmeans_batch(X, weights, k, num_iters=10):
         centroids = centroids_new
 
     return centroids, labels  # (B, k, D), (B, N)
+ 
