@@ -277,15 +277,15 @@ def train():
 
     model = transformers.AutoModelForCausalLM.from_pretrained(
         model_args.model_name_or_path,
-        config=config,
+        # config=config,
         cache_dir=training_args.cache_dir,
         trust_remote_code=True
     )
 
     replace_linear_with_linearact(model)
 #    model.seqlen = seqlen  #TODO
-    if config.vocab_size == 32001:
-        model.resize_token_embeddings(32001)
+    # if config.vocab_size == 32001:
+    #     model.resize_token_embeddings(32001)
 
     model = model.bfloat16()
     try:
