@@ -266,14 +266,14 @@ def train():
     # Set RoPE scaling factor
     import math
     from transformers import AutoConfig
-    config = transformers.AutoConfig.from_pretrained(model_args.model_name_or_path)
-    context_size = data_args.maxseqlen
-    orig_ctx_len = getattr(config, "max_position_embeddings", None) # this value should be 4096 for LLaMA2 models
-    if orig_ctx_len and context_size > orig_ctx_len:
-        scaling_factor = float(math.ceil(context_size / orig_ctx_len))
-        config.rope_scaling = {"type": "linear", "factor": scaling_factor}
+    # config = transformers.AutoConfig.from_pretrained(model_args.model_name_or_path)
+    # context_size = data_args.maxseqlen
+    # orig_ctx_len = getattr(config, "max_position_embeddings", None) # this value should be 4096 for LLaMA2 models
+    # if orig_ctx_len and context_size > orig_ctx_len:
+    #     scaling_factor = float(math.ceil(context_size / orig_ctx_len))
+    #     config.rope_scaling = {"type": "linear", "factor": scaling_factor}
 
-    config._flash_attn_2_enabled = True
+    # config._flash_attn_2_enabled = True
 
     model = transformers.AutoModelForCausalLM.from_pretrained(
         model_args.model_name_or_path,
