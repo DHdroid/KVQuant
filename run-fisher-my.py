@@ -207,7 +207,7 @@ class LinearAct(nn.Linear):
 
 def replace_linear_with_linearact(model):
     for name, module in model.named_children():
-        if isinstance(module, nn.Linear):
+        if isinstance(module, nn.Linear) and (("k_proj" in name) or ("v_proj" in name)):
             in_features = module.in_features
             out_features = module.out_features
             bias = module.bias is not None
@@ -290,11 +290,6 @@ def train():
     #     model.resize_token_embeddings(32001)
 
     model = model.bfloat16()
-    try:
-        model.lm_head.cuda()
-    except:
-        pass
-
     if model_args.load != "":
         model.load_state_dict(torch.load(model_args.load), strict=False)
         model.eval()

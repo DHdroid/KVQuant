@@ -27,7 +27,7 @@ do
     --num_examples 16
 
   # quant 디렉터리로 이동 후 quant 스크립트 실행
-  cd ../quant
+  cd quant
   conda activate kvquant
   python llama_simquant.py "$MODEL_PATH" \
     --num_coupled 4 \
