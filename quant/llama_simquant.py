@@ -231,8 +231,9 @@ def llama_calibration(model, dataloader, dev, perchannel_match, pertensor_match,
 
         for name in sequential_subset:
             handles.append(subset[name].register_forward_hook(add_batch(name)))
+        
 
-        rotary_emb = model.model.rotary_emb                                                                                                                                          │
+        rotary_emb = model.model.rotary_emb
         position_emb = rotary_emb(inps[0], position_ids)
         for j in range(args.nsamples):
             outs[j] = layer(
