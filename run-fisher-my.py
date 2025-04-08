@@ -12,7 +12,7 @@ from torch.utils.data import Dataset
 from transformers import Trainer
 
 from tqdm import tqdm
-import utils
+import gradients.utils
 
 # from memory_profiler import profile
 
@@ -207,20 +207,20 @@ class LinearAct(nn.Linear):
 
 def replace_linear_with_linearact(model):
     for name, module in model.named_children():
-        # 하위 모듈이 Linear면 LinearAct로 교체
         if isinstance(module, nn.Linear):
             in_features = module.in_features
             out_features = module.out_features
             bias = module.bias is not None
+            device = module.weight.device
+            dtype = module.weight.dtype
 
-            # LinearAct로 대체
-            new_module = LinearAct(in_features, out_features, bias=bias)
+            # LinearAct로 대체 (device, dtype 포함)
+            new_module = LinearAct(in_features, out_features, bias=bias).to(device=device, dtype=dtype)
             new_module.load_state_dict(module.state_dict())  # 기존 가중치 복사
             setattr(model, name, new_module)
-
-        # 하위 모듈이 다른 모듈이면 재귀적으로 처리
         else:
             replace_linear_with_linearact(module)
+
 
 
 
@@ -252,11 +252,11 @@ def train():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
     if data_args.dataset == "c4":
-        from datautils import get_loaders
+        from gradients.datautils import get_loaders
         print("Calibration with C4 ")
         dataloader, testloader = get_loaders(data_args.dataset,  model=model_args.model_name_or_path, seqlen=data_args.seqlen, seed=0)
     elif data_args.dataset == "wikitext2":
-        from datautils import get_loaders
+        from gradients.datautils import get_loaders
         print("Calibration with Wikitext2 ")
         dataloader, testloader = get_loaders(data_args.dataset,  model=model_args.model_name_or_path, seqlen=data_args.seqlen, seed=0)
     else:
@@ -278,8 +278,10 @@ def train():
     model = transformers.AutoModelForCausalLM.from_pretrained(
         model_args.model_name_or_path,
         # config=config,
-        cache_dir=training_args.cache_dir,
-        trust_remote_code=True
+        # cache_dir=training_args.cache_dir,
+        device_map="auto",
+        trust_remote_code=True,
+        torch_dtype=torch.bfloat16
     )
 
     replace_linear_with_linearact(model)
@@ -301,13 +303,12 @@ def train():
     # For other models, replace this with proper variable names for model and layers
     _model = model.model
     _layers = _model.layers
-    _model.set_devices()
     grads = {}
 
     # main loop
     for i, data in tqdm(enumerate(dataloader[:data_args.num_examples])):
         data = data[0]
-        x = data.cuda()
+        x = data.to(_model.device)
 
         # act gradients
         for n, layer in enumerate(_layers):
