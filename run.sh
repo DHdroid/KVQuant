@@ -2,24 +2,23 @@
 set -e
 source /opt/conda/etc/profile.d/conda.sh
 
-MODELS=("meta-llama/Llama-2-7b-hf" "meta-llama/Llama-2-7b-chat-hf")
+MODELS=("meta-llama/Llama-2-7b-hf"
+        "meta-llama/Llama-2-7b-chat-hf"
+        "mistralai/Mistral-7B-v0.3"
+        "mistralai/Mistral-7B-Instruct-v0.3"
+        "meta-llama/Meta-Llama-3-8B"
+        "meta-llama/Meta-Llama-3-8B-Instruct"
+        "meta-llama/Llama-3.1-8B"
+        "meta-llama/Llama-3.1-8B-Instruct")
 
-for MODEL_PATH in "${MODELS[@]}"
+MAXSEQLENS=(4096 4096 32768 32768 8192 8192 131072 131072)
+
+for i in "${!MODELS[@]}"
 do
-  cd gradients
-  conda activate grad
+  MODEL_PATH="${MODELS[$i]}"
+  MAXSEQLEN="${MAXSEQLENS[$i]}"
   OUTPUT_DIR="${MODEL_PATH//\//_}_fisher"
-
-  # maxseqlen ~D| ~U
-  if [ "$MODEL_PATH" == "meta-llama/Llama-2-7b-hf" ]; then
-    MAXSEQLEN=4096
-  elif [ "$MODEL_PATH" == "meta-llama/Llama-2-13b-hf" ]; then
-    MAXSEQLEN=4096
-  else
-    MAXSEQLEN=4096  # ____~R
-  fi
-
-  python run-fisher.py \
+  python run-fisher-my.py \
     --model_name_or_path "$MODEL_PATH" \
     --output_dir "$OUTPUT_DIR" \
     --dataset wikitext2 \
@@ -27,9 +26,9 @@ do
     --maxseqlen "$MAXSEQLEN" \
     --num_examples 16
 
-  cd ../quant
-  conda activate kvquant
-  python llama_simquant.py "$MODEL_PATH" --abits 2 --nsamples 16 --seqlen 2048 --nuq --fisher ../gradients/${OUTPUT_DIR} --quantize --include_sparse --sparsity-threshold 0.99 --quantizer-path quantizers_${MODEL_PATH//\//_}.pickle
+  cd ./quant
+  python llama_simquant.py "$MODEL_PATH" --abits 2 --nsamples 16 --seqlen 2048 --nuq --fisher ../${OUTPUT_DIR} --quantize --include_sparse --sparsity-threshold 0.99 --quantizer-path quantizers_${MODEL_PATH//\//_}.pickle
   cd ../
+  rm -rf ${OUTPUT_DIR}
 done
 
