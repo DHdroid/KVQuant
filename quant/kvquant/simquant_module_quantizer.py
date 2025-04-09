@@ -549,7 +549,7 @@ class SimQuant:
 
                 return outlier_threshold_upper, outlier_threshold_lower, centroids, normscale, normoffset
             else:
-                return outlier_threshold_upper, outlier_threshold_lower, centroids
+                return outlier_threshold_upper, outlier_threshold_lower, [torch.from_numpy(centroids[0])]
         else:
             # not using NUQ
             return outlier_threshold_upper, outlier_threshold_lower

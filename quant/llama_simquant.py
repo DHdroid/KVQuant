@@ -29,20 +29,10 @@ def get_model(model, seqlen, maxseqlen):
     torch.nn.init.normal_ = skip
 
     # Set RoPE scaling factor
-    from transformers import AutoConfig
-    config = AutoConfig.from_pretrained(model)
-    context_size = maxseqlen
-    orig_ctx_len = getattr(config, "max_position_embeddings", None) # this value should be 4096 for LLaMA2 models
-    if orig_ctx_len and context_size > orig_ctx_len:
-        scaling_factor = float(math.ceil(context_size / orig_ctx_len))
-        config.rope_scaling = {"type": "linear", "factor": scaling_factor}
 
     from transformers import AutoModelForCausalLM
-    model = AutoModelForCausalLM.from_pretrained(model, config=config, trust_remote_code=True, torch_dtype=torch.half)
+    model = AutoModelForCausalLM.from_pretrained(model, trust_remote_code=True, torch_dtype=torch.half, ignore_mismatched_sizes=True)
 
-    model.seqlen = seqlen  #TODO
-    if config.vocab_size == 32001:
-        model.resize_token_embeddings(32001)
     return model
 
 @torch.no_grad()
@@ -243,12 +233,16 @@ def llama_calibration(model, dataloader, dev, perchannel_match, pertensor_match,
 
         for name in sequential_subset:
             handles.append(subset[name].register_forward_hook(add_batch(name)))
+        
 
+        rotary_emb = model.model.rotary_emb
+        position_emb = rotary_emb(inps[0], position_ids)
         for j in range(args.nsamples):
             outs[j] = layer(
                 inps[j].unsqueeze(0),
                 attention_mask=attention_mask,
-                position_ids=position_ids
+                position_ids=position_ids,
+                position_embeddings=position_emb
             )[0]
 
         for h in handles:
@@ -320,6 +314,10 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--abits', type=int, default=16, choices=[2, 3, 4, 5, 16],
+        help='#bits to use for quantization; use 16 for evaluating base model.'
+    )
+    parser.add_argument(
+        '--abits', type=int, default=8, choices=[4,8,9,10],
         help='#bits to use for quantization; use 16 for evaluating base model.'
     )
     parser.add_argument(
