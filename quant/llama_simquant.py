@@ -317,10 +317,6 @@ if __name__ == '__main__':
         help='#bits to use for quantization; use 16 for evaluating base model.'
     )
     parser.add_argument(
-        '--abits', type=int, default=8, choices=[4,8,9,10],
-        help='#bits to use for quantization; use 16 for evaluating base model.'
-    )
-    parser.add_argument(
         '--nuq', action='store_true',
         help='Whether to use non-uniform quantization.'
     )
