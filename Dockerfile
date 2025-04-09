@@ -1,4 +1,5 @@
 FROM pytorch/pytorch:2.6.0-cuda11.8-cudnn9-devel
+ENV TORCH_CUDA_ARCH_LIST="7.5;8.0;8.6+PTX"
 
 # Install dependencies
 RUN apt-get update && apt-get install -y wget git curl bash vim tmux
@@ -14,6 +15,7 @@ ENV LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 RUN git clone https://github.com/DHdroid/KVQuant /workspace/KVQuant
 WORKDIR /workspace/KVQuant
 RUN git checkout cq
+RUN git pull
 
 # Copy and run the environment setup script
 COPY setup_env.sh .

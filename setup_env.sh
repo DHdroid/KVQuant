@@ -3,14 +3,14 @@ set -e
 
 # Create and activate kvquant environment
 cd /workspace/KVQuant/quant
-conda create -n kvquant python=3.10 -y
-source activate kvquant
-pip install -e .
-pip uninstall -y torch
-pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install transformers==4.51.0
+pip install accelerate
+pip install sentencepiece
+pip install tokenizers>=0.12.1
+pip install datasets
+pip install scikit-learn
+pip install matplotlib
 pip install google
 pip install google-api-core
 cd ../
-ls
 python setup.py install
-conda deactivate
