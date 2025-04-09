@@ -32,4 +32,3 @@ do
   python llama_simquant.py "$MODEL_PATH" --abits 2 --nsamples 16 --seqlen 2048 --nuq --fisher ../gradients/${OUTPUT_DIR} --quantize --include_sparse --sparsity-threshold 0.99 --quantizer-path quantizers_${MODEL_PATH//\//_}.pickle
   cd ../
 done
-

@@ -13,6 +13,7 @@ ENV LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 # Clone KVQuant repository
 RUN git clone https://github.com/DHdroid/KVQuant /workspace/KVQuant
 WORKDIR /workspace/KVQuant
+RUN git checkout cq
 
 # Copy and run the environment setup script
 COPY setup_env.sh .
