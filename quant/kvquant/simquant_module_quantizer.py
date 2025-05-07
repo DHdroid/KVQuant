@@ -539,7 +539,7 @@ class SimQuant:
                 not_outlier_mask_unqueeze = not_outlier_mask_unflattened.sum()
                 stdev1 = torch.sqrt(torch.sum(((aug - m1)*not_outlier_mask_unflattened)**2) / not_outlier_mask_unqueeze)
 
-                aug, freq = round_to_nearest_pole_sim(aug, centroid, return_freq=True)
+                aug = round_to_nearest_pole_sim(aug, centroid)
 
                 m2 = (aug*not_outlier_mask_unflattened).sum()/not_outlier_mask_unflattened.sum()
                 stdev2 = torch.sqrt(torch.sum(((aug - m2)*not_outlier_mask_unflattened)**2) / not_outlier_mask_unqueeze)
@@ -547,7 +547,7 @@ class SimQuant:
                 normscale = (stdev1 / stdev2)
                 normoffset = (- m2) * (stdev1 / stdev2) + m1
 
-                return outlier_threshold_upper, outlier_threshold_lower, centroids, normscale, normoffset
+                return outlier_threshold_upper, outlier_threshold_lower, [torch.from_numpy(centroids[0])], normscale, normoffset
             else:
                 return outlier_threshold_upper, outlier_threshold_lower, [torch.from_numpy(centroids[0])]
         else:

@@ -116,7 +116,7 @@ if __name__ == '__main__':
         type=int, default=0, help='Seed for sampling the calibration data.'
     )
     parser.add_argument(
-        '--abits', type=int, default=16, choices=[2, 3, 4, 16],
+        '--abits', type=int, default=16, choices=[1, 2, 3, 4, 16],
         help='#bits to use for quantization; use 16 for evaluating base model.'
     )
     parser.add_argument(
