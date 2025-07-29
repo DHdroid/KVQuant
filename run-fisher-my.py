@@ -259,6 +259,10 @@ def train():
         from gradients.datautils import get_loaders
         print("Calibration with Wikitext2 ")
         dataloader, testloader = get_loaders(data_args.dataset,  model=model_args.model_name_or_path, seqlen=data_args.seqlen, seed=0)
+    elif data_args.dataset == "mixed":
+        from gradients.datautils import get_loaders
+        print("Calibration with wiki2 + c4")
+        dataloader, testloader = get_loaders(data_args.dataset,  model=model_args.model_name_or_path, seqlen=data_args.seqlen, seed=0)
     else:
         raise NotImplementedError("Please define your own dataset here")
 
