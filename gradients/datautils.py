@@ -68,10 +68,10 @@ def get_ptb(nsamples, seed, seqlen, model):
 def get_c4(nsamples, seed, seqlen, model):
     from datasets import load_dataset
     traindata = load_dataset(
-        'allenai/c4', 'allenai--c4', data_files={'train': 'en/c4-train.00000-of-01024.json.gz'}, split='train', use_auth_token=False
+        'allenai/c4', data_files={'train': 'en/c4-train.00000-of-01024.json.gz'}, split='train',
     )
     valdata = load_dataset(
-        'allenai/c4', 'allenai--c4', data_files={'validation': 'en/c4-validation.00000-of-00008.json.gz'}, split='validation', use_auth_token=False
+        'allenai/c4', data_files={'validation': 'en/c4-validation.00000-of-00008.json.gz'}, split='validation',
     )
 
     from transformers import AutoTokenizer
@@ -183,6 +183,20 @@ def get_c4_new(nsamples, seed, seqlen, model):
     valenc = TokenizerWrapper(valenc)
 
     return trainloader, valenc
+
+
+def get_mixed(nsamples, seed, seqlen, model):
+    wikiloader, _ = get_wikitext2(nsamples, seed, seqlen, model)
+    c4loader, _ = get_c4(nsamples, seed, seqlen, model)
+    new_loader = []
+    for i in range(nsamples):
+        if i%2 == 0:
+            new_loader.append(wikiloader[i//2])
+        else:
+            new_loader.append(c4loader[i//2])
+    return new_loader, None
+
+
 def get_loaders(
     name, nsamples=128, seed=0, seqlen=2048, model=''
 ):
@@ -196,3 +210,10 @@ def get_loaders(
         if 'new' in name:
             return get_c4_new(nsamples, seed, seqlen, model)
         return get_c4(nsamples, seed, seqlen, model)
+    if 'mixed' in name:
+        return get_mixed(nsamples, seed, seqlen, model)
+
+
+if __name__ == "__main__":
+    loader, testloader = get_mixed(128, 0, 2048, "meta-llama/Llama-2-7b-hf")
+    print(len(loader))
